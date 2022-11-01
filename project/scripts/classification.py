@@ -10,6 +10,7 @@ from data import *
 from matplotlib.pyplot import *
 from sklearn import model_selection, tree
 import sklearn.linear_model as lm
+from toolbox_02450 import mcnemar
 import numpy as np
 
 
@@ -33,7 +34,7 @@ def train_eval_logistic_regression(D_train, D_test, C=1.0):
     return model, (error_test, error_train)
 
 
-def train_eval_decision_tree(D_train, D_test, criterion="gini", max_depth=1):
+def train_eval_decision_tree(D_train, D_test, criterion="gini", max_depth=None):
     x_train, y_train = D_train
     x_test, y_test = D_test
     # Fit decision tree classifier, different pruning levels
@@ -48,6 +49,29 @@ def train_eval_decision_tree(D_train, D_test, criterion="gini", max_depth=1):
     return model, (error_test, error_train)
 
 
+def train_eval_baseline(D_train, D_test):
+    x_train, y_train = D_train
+    x_test, y_test = D_test
+    classes = list(classDict.values())
+    cid = np.argmax([sum(y == c) for c in classes])
+
+    class BaselineClassifier:
+        def __init__(self, y_est):
+            self.y_est = y_est
+
+        def predict(self, x):
+            return np.array([self.y_est] * len(x))
+
+    model = BaselineClassifier(classes[cid])
+
+    y_est_test = model.predict(x_test)
+    y_est_train = model.predict(x_train)
+    error_test = get_classifier_error(y_test, y_est_test)
+    error_train = get_classifier_error(y_train, y_est_train)
+
+    return model, (error_test, error_train)
+
+
 def decision_tree_gvz(model, k, t):
     name = "gvz/tree_k{}_tc{}.gvz".format(k1, tc[s])
     out = tree.export_graphviz(model, out_file=name, feature_names=attributeNames)
@@ -56,11 +80,9 @@ def decision_tree_gvz(model, k, t):
     return graphviz.Source.from_file(name)
 
 
-# TODO: Baseline
-
-## Crossvalidation
+## Two-level crossvalidation
 # Create crossvalidation partition for evaluation
-K1 = K2 = 10
+K1 = K2 = 5
 CV1 = model_selection.KFold(n_splits=K1, shuffle=True)
 CV2 = model_selection.KFold(n_splits=K2, shuffle=True)
 
@@ -69,20 +91,25 @@ nm = 3
 # Number of complexity parameters
 nc = 10
 
-# Best complexity parameter ID
+# Best complexity parameter ID for each model
 S = np.zeros((K1, nm)).astype(int)
 # Estimated generalization error (outer cross-validation loop)
 Egen = np.zeros((K1, nm))
 
-# Logistic regression complexity - inverse regularization strength
-lr_c = [0.1 * (i + 1) for i in range(nc)]
+# Logistic regression
+lr_c = [
+    0.1 * (i + 1) for i in range(nc)
+]  # Complexity parameter - inverse regularization strength
 lr_m = 0  # Model ID for logistic regression (0 to nm-1)
 
-# Tree complexity parameter - constraint on maximum depth
-dt_c = [i + 1 for i in range(nc)]
+# Decision tree
+dt_c = [i + 1 for i in range(nc)]  # Complexity parameter - constraint on maximum depth
 dt_criterion = "gini"
 dt_m = 1  # Model ID for decision tree (0 to nm-1)
 # dt_gvz = []
+
+# Baseline
+bl_m = 2  # Model ID for baseline (0 to nm-1)
 
 # Center the data (subtract mean column values) and divide by the
 # attribute standard deviation to obtain a standardized dataset
@@ -129,21 +156,25 @@ for train_index1, test_index1 in CV1.split(X):
             )
             Error_test[k2][dt_m][c], Error_train[k2][dt_m][c] = err
 
+            # Baseline
+            model, err = train_eval_baseline(D_train2, D_test2)
+            Error_test[k2][bl_m][c], Error_train[k2][bl_m][c] = err
+
         # print('CV2: Cross validation fold {0}/{1}'.format(k2+1,K2))
         # print('CV2: Train indices: {0}'.format(train_index2))
         # print('CV2: Test indices: {0}'.format(test_index2))
         k2 += 1
 
-    Egen_s = np.empty((nm, nc))
+    Egen_c = np.empty((nm, nc))
     for m in range(nm):
         for c in range(nc):
-            # Average of errors for i=model type / j=complexity across inner cross validation sets
-            Egen_s[m][c] = sum(
+            # Average of errors for (m=model_type, c=complexity) across inner cross validation sets
+            Egen_c[m][c] = sum(
                 (length_test[k] / float(len(x_train1))) * Error_test[k][m][c]
                 for k in range(K2)
             )
         # Select best model complexity for each model type in this outer cross validation set
-        S[k1][m] = np.argmin(Egen_s[m])
+        S[k1][m] = np.argmin(Egen_c[m])
 
     # Train the optimal models again
 
@@ -158,9 +189,91 @@ for train_index1, test_index1 in CV1.split(X):
     Egen[k1][dt_m], _ = err
     # dt_gvz.append(decision_tree_gvz(model, k1, dt_c[s]))
 
+    # Baseline
+    s = S[k1][bl_m]  # Doesn't really matter (no complexity parameter)
+    model, err = train_eval_baseline(D_train1, D_test1)
+    Egen[k1][bl_m], _ = err
+
     print("CV1: Cross validation fold {0}/{1}".format(k1 + 1, K1))
     # print('CV1: Train indices: {0}'.format(train_index1))
     # print('CV1: Test indices: {0}'.format(test_index1))
     k1 += 1
 
-# TODO: Make comparison table and plots
+lr_c_opt = np.array([lr_c[S[k, lr_m]] for k in range(K1)])
+dt_c_opt = np.array([dt_c[S[k, dt_m]] for k in range(K1)])
+
+print("\nGeneralization error for outer folds (K1):")
+print(
+    "  - Logistic regression (avg={}):\n    {}".format(
+        np.mean(Egen[:, lr_m]), Egen[:, lr_m]
+    )
+)
+print(
+    "  - Decision tree (avg={}):\n    {}".format(np.mean(Egen[:, dt_m]), Egen[:, dt_m])
+)
+print("  - Baseline (avg={}):\n    {}".format(np.mean(Egen[:, bl_m]), Egen[:, bl_m]))
+
+print("\nOptimal model complexity parameter for outer folds (K1):")
+print("  - Logistic regression:\n    ", lr_c_opt)
+print("  - Decision tree:\n    ", dt_c_opt)
+
+###############################################################################
+## Statistical evaluation (pairwise)
+K = 10
+# Perform one-level crossvalidation
+CV = model_selection.KFold(n_splits=K, shuffle=True)
+# CV = model_selection.LeaveOneOut()
+i = 0
+
+yhat = []
+y_true = []
+for train_index, test_index in CV.split(X, y):
+    print("Crossvalidation fold: {0}/{1}".format(i + 1, N))
+
+    # extract training and test set for current CV fold
+    X_train = X[train_index, :]
+    y_train = y[train_index]
+    X_test = X[test_index, :]
+    y_test = y[test_index]
+
+    D_train = (X_train, y_train)
+    D_test = (X_test, y_test)
+
+    dy = []
+
+    train_eval_model_fns = [
+        train_eval_logistic_regression,
+        train_eval_decision_tree,
+        train_eval_baseline,
+    ]
+    for train_eval_model_fn in train_eval_model_fns:
+        model, _ = train_eval_model_fn(D_train, D_test)
+        y_est = model.predict(X_test)
+        dy.append(y_est)
+
+    dy = np.stack(dy, axis=1)
+    yhat.append(dy)
+    y_true.append(y_test)
+
+    i += 1
+
+yhat = np.concatenate(yhat)
+y_true = np.concatenate(y_true)
+
+acc = []  # Accuracy
+for m in range(nm):
+    acc_m = np.sum(yhat[:, m] == y_true) / len(y_true)
+    acc.append(acc_m)
+
+alpha = 0.01
+print("\nStatistical evaluation [logistic regression - decision tree]:")
+[thetahat, CI, p] = mcnemar(y_true, yhat[:, lr_m], yhat[:, dt_m], alpha=alpha)
+print("  theta = theta_A-theta_B point estimate", thetahat, " CI: ", CI, "p-value", p)
+
+print("\nStatistical evaluation [logistic regression - baseline]:")
+[thetahat, CI, p] = mcnemar(y_true, yhat[:, lr_m], yhat[:, bl_m], alpha=alpha)
+print("  theta = theta_A-theta_B point estimate", thetahat, " CI: ", CI, "p-value", p)
+
+print("\nStatistical evaluation [decision tree - baseline]:")
+[thetahat, CI, p] = mcnemar(y_true, yhat[:, dt_m], yhat[:, bl_m], alpha=alpha)
+print("  theta = theta_A-theta_B point estimate", thetahat, " CI: ", CI, "p-value", p)
