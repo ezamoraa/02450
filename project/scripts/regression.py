@@ -1,26 +1,27 @@
-from data import *
-import sklearn.linear_model as lm
+# exercise 8.2.6
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.io import loadmat
 import torch
 from sklearn import model_selection
 from toolbox_02450 import train_neural_net, draw_neural_net
 from scipy import stats
+from data import *
 
 # preparing data:
-lm_idx = attributeNames.index('Extent')
+lm_idx = attributeNames.index('Area')
 y = X[:, lm_idx].reshape(-1,1)
 X1 = X[:,:lm_idx]
 X2 = X[:,lm_idx+1:]
 X = np.concatenate((X1, X2), axis=1)
+# X = X[:, 0].reshape(-1,1)
 attributeNames.pop(lm_idx)
 N, M = X.shape
 
 # Normalize data
-X = stats.zscore(X)
-
-
-               
+# X = stats.zscore(X)
+# y = stats.zscore(y)
+                
 ## Normalize and compute PCA (change to True to experiment with PCA preprocessing)
 do_pca_preprocessing = False
 if do_pca_preprocessing:
@@ -34,13 +35,20 @@ if do_pca_preprocessing:
 
 
 # Parameters for neural network classifier
-n_hidden_units = 1      # number of hidden units
+n_hidden_units = 10       # number of hidden units
 n_replicates = 1        # number of networks trained in each k-fold
-max_iter = 5000
+max_iter = 100000
+
+
+
+
 
 # K-fold crossvalidation
-K = 3                 # only three folds to speed up this example
+K = 3                   # only three folds to speed up this example
 CV = model_selection.KFold(K, shuffle=True)
+
+
+
 
 # Setup figure for display of learning curves and error rates in fold
 summaries, summaries_axes = plt.subplots(1,2, figsize=(10,5))
@@ -48,19 +56,29 @@ summaries, summaries_axes = plt.subplots(1,2, figsize=(10,5))
 color_list = ['tab:orange', 'tab:green', 'tab:purple', 'tab:brown', 'tab:pink',
               'tab:gray', 'tab:olive', 'tab:cyan', 'tab:red', 'tab:blue']
 
+
+
 # Define the model
 model = lambda: torch.nn.Sequential(
                     torch.nn.Linear(M, n_hidden_units), #M features to n_hidden_units
-                    torch.nn.Tanh(),   # 1st transfer function,
+                    #torch.nn.Tanh(),   # 1st transfer function,
+                    torch.nn.ReLU(),
+                    torch.nn.Linear(n_hidden_units, n_hidden_units),
+                    torch.nn.ReLU(),
                     torch.nn.Linear(n_hidden_units, 1), # n_hidden_units to 1 output neuron
-                    # no final transfer function, i.e. "linear output"
+                    # no final tranfer function, i.e. "linear output"
                     )
 
 loss_fn = torch.nn.MSELoss() # notice how this is now a mean-squared-error loss
 
+
+
+
+
 print('Training model of type:\n\n{}\n'.format(str(model())))
 errors_ann = [] # make a list for storing generalizaition error in each loop
 errors_baseline = []
+
 for (k, (train_index, test_index)) in enumerate(CV.split(X,y)): 
     print('\nCrossvalidation fold: {0}/{1}'.format(k+1,K))    
     
@@ -69,7 +87,9 @@ for (k, (train_index, test_index)) in enumerate(CV.split(X,y)):
     y_train = torch.Tensor(y[train_index])
     X_test = torch.Tensor(X[test_index,:])
     y_test = torch.Tensor(y[test_index])
-    
+
+
+
     # Train the net on training data
     net, final_loss, learning_curve = train_neural_net(model,
                                                        loss_fn,
@@ -81,13 +101,17 @@ for (k, (train_index, test_index)) in enumerate(CV.split(X,y)):
     print('\n\tBest loss: {}\n'.format(final_loss))
     
     # Determine estimated class labels for test set
-    y_test_est = net(X_test)
+    y_test_est = net(X_test).data.numpy()
+    y_test = y_test.data.numpy()
     
     # Determine errors and errors
-    se = (y_test_est.float()-y_test.float())**2 # squared error
-    mse = (sum(se).type(torch.float)/len(y_test)).data.numpy() #mean
+    se = (y_test_est-y_test)**2 # squared error
+    mse = (sum(se)/len(y_test)) #mean
     errors_ann.append(mse) # store error rate for current CV fold 
     
+
+
+
     # Display the learning curve for the best net in the current fold
     h, = summaries_axes[0].plot(learning_curve, color=color_list[k])
     h.set_label('CV fold {0}'.format(k+1))
@@ -96,16 +120,14 @@ for (k, (train_index, test_index)) in enumerate(CV.split(X,y)):
     summaries_axes[0].set_ylabel('Loss')
     summaries_axes[0].set_title('Learning curves')
     
-    
-    
-    # Baseline
-    seher = y_test.data.numpy()
-    y_baseline_est = np.mean(y_test.data.numpy())
-    se_baseline = (y_baseline_est-y_test.float())**2 # squared error
-    mse_baseline = (sum(se_baseline).type(torch.float)/len(y_test)).data.numpy() #mean
-    errors_baseline.append(mse_baseline) # store error rate for current CV fold 
-    
-    
+
+
+
+    y_baseline_est = np.mean(y_test)
+    se_baseline = (y_baseline_est - y_test)**2 # squared error
+    mse_baseline = (sum(se_baseline)/len(y_test)) #mean
+    errors_baseline.append(mse_baseline) # store error rate for current CV fold
+
 
 # Display the MSE across folds
 summaries_axes[1].bar(np.arange(1, K+1), np.squeeze(np.asarray(errors_ann)), color=color_list)
@@ -120,13 +142,8 @@ biases = [net[i].bias.data.numpy() for i in [0,2]]
 tf =  [str(net[i]) for i in [1,2]]
 draw_neural_net(weights, biases, tf, attribute_names=attributeNames)
 
-
-
 # Print the average classification error rate
-print('\nEstimated generalization error, MSE: {0}'.format(np.mean(errors_ann), 8)
-
-
-
+print('\nEstimated generalization error, MSE: {0}'.format(round(np.mean(errors_ann)), 4))
 
 # When dealing with regression outputs, a simple way of looking at the quality
 # of predictions visually is by plotting the estimated value as a function of 
@@ -134,7 +151,7 @@ print('\nEstimated generalization error, MSE: {0}'.format(np.mean(errors_ann), 8
 # and if the points are above the line, the model overestimates, whereas if the
 # points are below the y=x line, then the model underestimates the value
 plt.figure(figsize=(10,10))
-y_est = y_test_est.data.numpy(); y_true = y_test.data.numpy()
+y_est = y_test_est; y_true = y_test
 axis_range = [np.min([y_est, y_true])-1,np.max([y_est, y_true])+1]
 plt.plot(axis_range,axis_range,'k--')
 plt.plot(y_true, y_est,'ob',alpha=.25)
@@ -148,10 +165,5 @@ plt.grid()
 plt.show()
 
 
+
 error = np.concatenate((errors_ann, errors_baseline), axis=1)
-
-
-
-
-
-
