@@ -39,7 +39,6 @@ def train_eval_regularized_reg(D_train, D_test, C):
     w = np.linalg.solve(XtX+lambdaI,Xty).squeeze()
     # Evaluate training and test performance
 
-    # Put in bias term again? (w0)
     def rlr_model(X_data):
         y_est = X_data @ w.T
 
