@@ -1,4 +1,3 @@
-# exercise 8.2.6
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.io import loadmat
