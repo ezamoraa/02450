@@ -19,11 +19,11 @@ def get_classifier_error(y_exp, y_est):
     return sum(y_est != y_exp) / float(len(y_est))
 
 
-def train_eval_logistic_regression(D_train, D_test, C=1.0):
+def train_eval_logistic_regression(D_train, D_test, reg_strength=1.0):
     x_train, y_train = D_train
     x_test, y_test = D_test
 
-    model = lm.LogisticRegression(C=C)
+    model = lm.LogisticRegression(C=1./reg_strength)
     model = model.fit(x_train, y_train)
 
     y_est_test = model.predict(x_test)
@@ -74,14 +74,14 @@ def train_eval_baseline(D_train, D_test):
 
 
 def decision_tree_gvz(model, k, t):
-    name = "gvz/tree_k{}_tc{}.gvz".format(k1, tc[s])
+    name = "gvz/tree_k{}_tc{}.gvz".format(k1, t)
     out = tree.export_graphviz(model, out_file=name, feature_names=attributeNames)
     import graphviz
 
     return graphviz.Source.from_file(name)
 
 
-def main():
+if __name__ == "__main__":
     ## Two-level crossvalidation
     # Create crossvalidation partition for evaluation
     K1 = K2 = 10
@@ -102,7 +102,7 @@ def main():
     lr_m = 0  # Model ID for logistic regression (0 to nm-1)
     lr_c = [
         0.1 * (i + 1) for i in range(nc)
-    ]  # Complexity parameter - inverse regularization strength
+    ]  # Complexity parameter - regularization strength
 
     # Decision tree
     dt_c = [
@@ -110,7 +110,7 @@ def main():
     ]  # Complexity parameter - constraint on maximum depth
     dt_criterion = "gini"
     dt_m = 1  # Model ID for decision tree (0 to nm-1)
-    # dt_gvz = []
+    dt_gvz = []
 
     # Baseline
     bl_m = 2  # Model ID for baseline (0 to nm-1)
@@ -191,7 +191,7 @@ def main():
         s = S[k1][dt_m]
         model, err = train_eval_decision_tree(D_train1, D_test1, dt_criterion, dt_c[s])
         Egen[k1][dt_m], _ = err
-        # dt_gvz.append(decision_tree_gvz(model, k1, dt_c[s]))
+        dt_gvz.append(decision_tree_gvz(model, k1, dt_c[s]))
 
         # Baseline
         s = S[k1][bl_m]  # Doesn't really matter (no complexity parameter)
@@ -224,7 +224,3 @@ def main():
     print("\nOptimal model complexity parameter for outer folds (K1):")
     print("  - Logistic regression:\n    ", lr_c_opt)
     print("  - Decision tree:\n    ", dt_c_opt)
-
-
-if __name__ == "__main__":
-    main()

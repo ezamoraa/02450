@@ -16,7 +16,7 @@ from data import *
 from classification_models import *
 
 
-def main():
+if __name__ == "__main__":
     # Number of model types (logistic regression, decision tree, baseline)
     nm = 3
     lr_m = 0  # Model ID for logistic regression (0 to nm-1)
@@ -93,7 +93,3 @@ def main():
     print(
         "  theta = theta_A-theta_B point estimate", thetahat, " CI: ", CI, "p-value", p
     )
-
-
-if __name__ == "__main__":
-    main()
