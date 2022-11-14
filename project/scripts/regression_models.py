@@ -1,4 +1,4 @@
-import matplotlib.pyplot as plt
+from matplotlib.pylab import *
 import numpy as np
 from scipy.io import loadmat
 import torch
@@ -7,21 +7,37 @@ from toolbox_02450 import train_neural_net, draw_neural_net
 from scipy import stats
 from data import *
 
-# preparing data:
+
+from sklearn.model_selection import train_test_split
+#X_train, X, y_train, giy = train_test_split(X, y, test_size=.005, stratify=y)
+    
+# Preparing data  
 lm_idx = attributeNames.index('Area')
 y = X[:, lm_idx].reshape(-1, 1)
 X1 = X[:, :lm_idx]
 X2 = X[:, lm_idx+1:]
 X = np.concatenate((X1, X2), axis=1)
 # X = X[:, 0].reshape(-1,1)
-
 attributeNames.pop(lm_idx)
+
+# Removing convex area when predicting area
+rm_idx = attributeNames.index('Convex_Area')
+attributeNames.pop(rm_idx)
+Xrm1 = X[:, :rm_idx]
+Xrm2 = X[:, rm_idx+1:]
+X = np.concatenate((Xrm1, Xrm2), axis=1)
+
+
 N, M = X.shape
 
 
 def get_regression_error(y_exp, y_est):
-    return np.sum(np.power(y_est - y_exp, 2)) / float(len(y_est))
+    return np.sum(np.power(y_exp - y_est.reshape(-1,1), 2)) / float(len(y_est))
 
+def get_squared_error(y_exp, y_est):
+    #z = np.power(np.abs(y_exp - y_est.reshape(-1,1)),2) #Squared error
+    z = np.abs(y_exp - y_est.reshape(-1,1)) #Absolute error
+    return z
 
 def train_eval_regularized_reg(D_train, D_test, C, attributeNames, M):
     x_train, y_train = D_train
@@ -62,13 +78,21 @@ def train_eval_regularized_reg(D_train, D_test, C, attributeNames, M):
 
     error_test = get_regression_error(y_test, y_est_test)
     error_train = get_regression_error(y_train, y_est_train)
+    
+    z = get_squared_error(y_test, y_est_test)
 
-    return model, (error_test, error_train)
+    return model, z, (error_test, error_train)
 
 
 def train_eval_neural_network(D_train, D_test, hidden_units=1):
     x_train, y_train = D_train
     x_test, y_test = D_test
+    
+    # Normalize data
+    # x_train = stats.zscore(x_train)
+    # x_test = stats.zscore(x_test)
+    # y = stats.zscore(y)
+    
 
     x_train = torch.Tensor(x_train)
     y_train = torch.Tensor(y_train)
@@ -76,13 +100,15 @@ def train_eval_neural_network(D_train, D_test, hidden_units=1):
     y_test = torch.Tensor(y_test)
 
     n_hidden_units = hidden_units        # number of hidden units
-    n_replicates = 1        # number of networks trained in each k-fold
-    max_iter = 10000
+    n_replicates = 2        # number of networks trained in each k-fold
+    max_iter = 30000
 
     def model(): return torch.nn.Sequential(
         torch.nn.Linear(M, n_hidden_units),  # M features to n_hidden_units
-        # torch.nn.Tanh(),   # 1st transfer function,
-        torch.nn.ReLU(),    # 1st transfer function, ReLU, Tanh,
+        #torch.nn.Tanh(),   # 1st transfer function,
+        ##torch.nn.ReLU(),    # 1st transfer function, ReLU, Tanh,
+        #torch.nn.Linear(n_hidden_units, n_hidden_units),  # n_hidden_units to n_hidden_units
+        torch.nn.ReLU(),    # 2nd transfer function
         # n_hidden_units to 1 output neuron
         torch.nn.Linear(n_hidden_units, 1),
         # no final tranfer function, i.e. "linear output"
@@ -96,16 +122,18 @@ def train_eval_neural_network(D_train, D_test, hidden_units=1):
                                                        y=y_train,
                                                        n_replicates=n_replicates,
                                                        max_iter=max_iter)
-    y_est_test = net(x_test).data.numpy()
     y_est_train = net(x_train).data.numpy()
+    y_est_test = net(x_test).data.numpy()
 
-    y_test = y_test.data.numpy()
     y_train = y_train.data.numpy()
+    y_test = y_test.data.numpy()
 
-    error_test = get_regression_error(y_test, y_est_test)
     error_train = get_regression_error(y_train, y_est_train)
+    error_test = get_regression_error(y_test, y_est_test)
+    
+    z = get_squared_error(y_test, y_est_test)
 
-    return model, (error_test, error_train)
+    return model, z, (error_test, error_train)
 
 
 def train_eval_baseline(D_train, D_test):
@@ -127,9 +155,32 @@ def train_eval_baseline(D_train, D_test):
     y_est_train = model.predict(x_train)
     error_test = get_regression_error(y_test, y_est_test)
     error_train = get_regression_error(y_train, y_est_train)
+    
+    z = get_squared_error(y_test, y_est_test)
 
-    return model, (error_test, error_train)
+    return model, z, (error_test, error_train)
 
+
+def stat_eval_ttest(z_all, nm):
+    z_rlr = z_all[:,0]
+    z_ann = z_all[:,1]
+    z_bl = z_all[:,2]
+    
+    alpha = 0.05
+    
+    z = []    
+    z.append(z_ann - z_rlr)
+    z.append(z_ann - z_bl)
+    z.append(z_rlr - z_bl)
+    
+    CI = []
+    p = []
+    
+    for i in range(nm):
+        CI.append( stats.t.interval(1-alpha, len(z[i])-1, loc=np.mean(z[i]), scale=stats.sem(z[i])) ) # Confidence interval
+        p.append( 2*stats.t.cdf( -np.abs( np.mean(z[i]) )/stats.sem(z[i]), df=len(z[i])-1) )  # p-value
+    
+    return p, CI
 
 def main():
 
@@ -149,7 +200,7 @@ def main():
 
     # RLR complexity parameter
     rlr_c = np.array([
-        np.power(10., i-2) for i in range(nc)
+        np.power(10., i-5) for i in range(nc)
     ])  # Complexity parameter - regularization strength
     rlr_m = 0
 
@@ -157,14 +208,18 @@ def main():
     ann_c = np.array([
         i + 1 for i in range(nc)
     ])  # Complexity parameter - regularization strength
-    ann_m = 0
+    ann_m = 1
 
     # Baseline
     bl_m = 2  # Model ID for baseline (0 to nm-1)
 
-    k1 = 0
+    k1 = 0    
+    
+    z_all = []
     # Outer cross-validation loop
     for train_index1, test_index1 in CV1.split(X):
+        print("CV1: Cross validation fold {0}/{1}".format(k1 + 1, K1))
+        
         # Extract training and test set for current CV fold
         x_train1 = X[train_index1, :]
         y_train1 = y[train_index1]
@@ -193,18 +248,27 @@ def main():
             # Evaluate multiple models with different complexity
             for c in range(nc):
                 # RLR
-                model, err = train_eval_regularized_reg(D_train2, D_test2, rlr_c[c], attributeNames, M)
+                model, _ , err = train_eval_regularized_reg(D_train2, D_test2, rlr_c[c], attributeNames, M)
                 Error_test[k2][rlr_m][c], Error_train[k2][rlr_m][c] = err
 
                 # ANN
-                model, err = train_eval_neural_network(D_train2, D_test2, ann_c[c])
+                model, _ , err = train_eval_neural_network(D_train2, D_test2, ann_c[c])
                 Error_test[k2][ann_m][c], Error_train[k2][ann_m][c] = err
 
                 # Baseline
-                model, err = train_eval_baseline(D_train2, D_test2)
+                model, _ , err = train_eval_baseline(D_train2, D_test2)
                 Error_test[k2][bl_m][c], Error_train[k2][bl_m][c] = err
+                
+            figure(k2*(k1+1), figsize=(12,8))
+            plot(ann_c, Error_test[k2][ann_m])
+            #title('Evaluation of number of hidden units for ANN')
+            grid()
+            xlabel('Amount of hidden units')
+            ylabel('Error (MSE)')
 
             k2 += 1
+            
+
 
         Egen_c = np.empty((nm, nc))
         for m in range(nm):
@@ -218,28 +282,39 @@ def main():
             # Select best model complexity for each model type in this outer cross validation set
             S[k1][m] = np.argmin(Egen_c[m])
 
-        # Train the optimal models again
 
+        z=[]
+        # Train the optimal models again
         # RLR
         s = S[k1][rlr_m]
-        model, err = train_eval_regularized_reg(D_train1, D_test1, rlr_c[s], attributeNames, M)
+        model, z_m, err = train_eval_regularized_reg(D_train1, D_test1, rlr_c[s], attributeNames, M)
         Egen[k1][rlr_m], _ = err
+        z.append(z_m[:,0]) #Add errors for statistical evaluation
 
         # ANN
         s = S[k1][ann_m]
-        model, err = train_eval_neural_network(D_train1, D_test1, ann_c[s])
+        model, z_m, err = train_eval_neural_network(D_train1, D_test1, ann_c[s])
         Egen[k1][ann_m], _ = err
+        z.append(z_m[:,0]) #Add errors for statistical evaluation
 
         # Baseline
         s = S[k1][bl_m]
-        model, err = train_eval_baseline(D_train1, D_test1)
+        model, z_m, err = train_eval_baseline(D_train1, D_test1)
         Egen[k1][bl_m], _ = err
+        z.append(z_m[:,0]) #Add errors for statistical evaluation
+        
+        #To compare errors (for statistical evaluation)
+        z = np.stack(z, axis=1)
+        z_all.append(z)
 
-
-        print("CV1: Cross validation fold {0}/{1}".format(k1 + 1, K1))
+        #print("CV1: Cross validation fold {0}/{1}".format(k1 + 1, K1))
         # print('CV1: Train indices: {0}'.format(train_index1))
         # print('CV1: Test indices: {0}'.format(test_index1))
         k1 += 1
+
+    z_all = np.concatenate(z_all) #Concatenating to compare errors for statistical evaluation
+    p, CI = stat_eval_ttest(z_all, nm)
+    
 
     rlr_c_opt = np.array([rlr_c[S[k, rlr_m]] for k in range(K1)])
     ann_c_opt = np.array([ann_c[S[k, ann_m]] for k in range(K1)])
@@ -264,6 +339,15 @@ def main():
     print("\nOptimal model complexity parameter for outer folds (K1):")
     print("  - Regularized linear regression:\n    ", rlr_c_opt)
     print("  - ANN:\n    ", ann_c_opt)
+    
+    
+    print(" ----- Statistical evaluation ------ ")
+    print("ANN vs RLR  ---  CI:", CI[0], "   ---   p: ", p[0])
+    print("ANN vs BL   ---  CI:", CI[1], "   ---   p: ", p[1])
+    print("RLR vs BL   ---  CI:", CI[2], "   ---   p: ", p[2])
+    
+    
+    
 
 
 if __name__ == "__main__":
