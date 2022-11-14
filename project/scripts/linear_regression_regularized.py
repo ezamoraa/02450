@@ -18,8 +18,13 @@ from data import *
 
 # Removing indexed attribute from the data matrix
 
+# X = np.append(X, onehot_encoded, 1)
+# attributeNames.append("Cameo")
+# attributeNames.append("Osmancik")
 
 X_train, X_s, y_train, y_s = train_test_split(X, y, test_size=.005, stratify=y)
+
+
 
 lm_idx = attributeNames.index('Area')
 y = X_s[:, lm_idx]
@@ -28,7 +33,11 @@ X_cols = list(range(0, lm_idx)) + list(range(lm_idx+1,len(attributeNames)))
 X = X_s[:, X_cols]
 attributeNames.pop(lm_idx)
 
-N, M = X.shape
+ca_idx = attributeNames.index('Convex_Area')
+X_cols = list(range(0, ca_idx)) + list(range(ca_idx+1,len(attributeNames)))
+X = X[:, X_cols]
+attributeNames.pop(ca_idx)
+
 # Maybe add the classes as an attribute at some point
 
 
@@ -36,16 +45,16 @@ N, M = X.shape
 # Add offset attribute
 X = np.concatenate((np.ones((X.shape[0],1)),X),1)
 attributeNames = [u'Offset']+attributeNames
-M = M+1
+N, M = X.shape
 
 ## Crossvalidation
 # Create crossvalidation partition for evaluation
-K = 5
+K = 10
 CV = model_selection.KFold(K, shuffle=True)
 #CV = model_selection.KFold(K, shuffle=False)
 
 # Values of lambda
-lambdas = np.power(10.,np.linspace(-5,9, num=50))
+lambdas = np.power(10.,np.linspace(-4,7, num=50))
 #lambdas = np.power(10.,range(-5,9))
 
 # Initialize variables
@@ -69,7 +78,7 @@ for train_index, test_index in CV.split(X,y):
     y_train = y[train_index]
     X_test = X[test_index]
     y_test = y[test_index]
-    internal_cross_validation = 5  
+    internal_cross_validation = 10  
     
     opt_val_err, opt_lambda, mean_w_vs_lambda, train_err_vs_lambda, test_err_vs_lambda = rlr_validate(X_train, y_train, lambdas, internal_cross_validation)
     
@@ -107,19 +116,20 @@ for train_index, test_index in CV.split(X,y):
     #Error_train[k] = np.square(y_train-m.predict(X_train)).sum()/y_train.shape[0]
     #Error_test[k] = np.square(y_test-m.predict(X_test)).sum()/y_test.shape[0]
 
-    # Display the results for the last cross-validation fold
+    # Display the results for the last cross-validation f2old
     if k == K-1:
-        figure(k, figsize=(12,8))
-        subplot(1,2,1)
-        semilogx(lambdas,mean_w_vs_lambda.T[:,1:],'.--') # Don't plot the bias term
-        xlabel('Regularization factor')
-        ylabel('Mean Coefficient Values')
-        grid()
+        figure(k, figsize=(8,8))
+        # subplot(1,2,1)
+        # semilogx(lambdas,mean_w_vs_lambda.T[:,1:],'.--') # Don't plot the bias term
+        # xlabel('Regularization factor')
+        # ylabel('Mean Coefficient Values')
+        # legend(attributeNames[1:])
+        # grid()
         # You can choose to display the legend, but it's omitted for a cleaner 
         # plot, since there are many attributes
         #legend(attributeNames[1:], loc='best')
         
-        subplot(1,2,2)
+        # subplot(1,2,2)
         title('Optimal lambda: 1e{0}'.format(np.log10(opt_lambda)))
         loglog(lambdas,train_err_vs_lambda.T,'b.-',lambdas,test_err_vs_lambda.T,'r.--')
         xlabel('Regularization factor')
