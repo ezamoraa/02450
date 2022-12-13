@@ -5,8 +5,9 @@ def index_regression(indexType, y):
     N = np.sum(y)
     mean = np.mean(y)
     p = y / N
-    
+
     if indexType == 'Regression':
+        N = len(y)
         I = 1 / N * np.sum(np.power((y - mean),2))
         
     if indexType == 'Gini':
