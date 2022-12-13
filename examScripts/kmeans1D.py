@@ -1,6 +1,13 @@
 import numpy as np
 from sklearn.cluster import KMeans
 
+"""
+Try the script on:
+2016 fall Q11
+2017 fall Q8
+
+"""
+
 X = np.array([-2.1, -1.7, -1.5, -0.4, 0.0, 0.6, 0.8, 1.0, 1,1]).reshape(-1,1)
 
 nClusters = 3

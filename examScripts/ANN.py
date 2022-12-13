@@ -16,6 +16,10 @@ def reLu(xw):
     output = (xw > 0) * xw
     return output
 
+def tanh(xw):
+    output = np.tanh(xw)
+    return output
+
 
 """ Either sigmoid og reLu """
 transferfunction = "sigmoid"
@@ -34,20 +38,23 @@ x = np.array([1, -2])
 #     [1, 1, 1],
 #     [1, 1, 2]
 #     ])
-
-h = []
-if transferfunction == "sigmoid":
-    for weight in w_list:
-        xw = np.dot(x, weight)
-        h.append(sigmoid(xw))
-
-elif transferfunction == "reLu":
-    for weight in w_list:
-        xw = np.dot(x, weight)
-        h.append(reLu(xw))
-
-else:
-    print("Pick a valid transferfunction")
+
+
+h = []
+
+if transferfunction == "sigmoid":
+    hFunc = sigmoid
+elif transferfunction == "reLu":
+    hFunc = reLu
+elif transferfunction == "tanh":
+    hFunc = tanh
+else:
+    print("Pick a valid transferfunction")
+
+
+for weight in w_list:
+    xw = x @ weight
+    h.append(hFunc(xw))
 
 """ Use this one instead for somehting like 2021 fall Q18"""
 # z = np.array( [np.ones_like(h), h] ).transpose().squeeze()
