@@ -8,6 +8,15 @@ Try the script on:
 2021 fall Q18 (difficult setup)
  """
 
+def sigmoid(xw):
+    output = 1 / (1 + np.exp(-xw))
+    return output
+
+def reLu(xw):
+    output = (xw > 0) * xw
+    return output
+
+
 """ Either sigmoid og reLu """
 transferfunction = "sigmoid"
 w0 = 1.4
@@ -18,7 +27,7 @@ w_out = np.array([-1, 0.4]).transpose()
 
 w_list = np.array([w1, w2])
 
-x = np.array( [1, -2] )
+x = np.array([1, -2])
 # x = np.array([
 #     [1, 0, 0],
 #     [1, 1, 0],
@@ -26,23 +35,13 @@ x = np.array( [1, -2] )
 #     [1, 1, 2]
 #     ])
 
-def sigmoid(xw):
-    output = 1 / (1 + np.exp(-xw))
-    return output
-
-def reLu(xw):
-    output = (xw > 0) * xw
-    return output
-
-
+h = []
 if transferfunction == "sigmoid":
-    h = []
     for weight in w_list:
         xw = np.dot(x, weight)
         h.append(sigmoid(xw))
 
 elif transferfunction == "reLu":
-    h = []
     for weight in w_list:
         xw = np.dot(x, weight)
         h.append(reLu(xw))
@@ -61,4 +60,3 @@ f = sigmoid(np.sum(w_out * h) + w0)
 # f = np.sum(w_out * h + w0)
 
 print(f)
-
